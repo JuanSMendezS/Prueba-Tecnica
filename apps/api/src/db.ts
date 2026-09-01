@@ -1,3 +1,4 @@
+import bcrypt from 'bcryptjs';
 import pg from 'pg';
 
 export const pool = new pg.Pool({
@@ -23,8 +24,13 @@ export async function migrate() {
       name text NOT NULL UNIQUE,
       capacity integer NOT NULL CHECK (capacity > 0),
       active boolean NOT NULL DEFAULT true,
+      open_hour smallint NOT NULL DEFAULT 6,
+      close_hour smallint NOT NULL DEFAULT 18,
       created_at timestamptz NOT NULL DEFAULT now()
     );
+
+    ALTER TABLE resources ADD COLUMN IF NOT EXISTS open_hour smallint NOT NULL DEFAULT 6;
+    ALTER TABLE resources ADD COLUMN IF NOT EXISTS close_hour smallint NOT NULL DEFAULT 18;
 
     CREATE TABLE IF NOT EXISTS reservations (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -45,7 +51,17 @@ export async function migrate() {
       ON reservations (resource_id, start_time, end_time);
 
     INSERT INTO resources (name, capacity)
-    VALUES ('Sala Norte', 8), ('Sala Sur', 12), ('Cancha Central', 20)
+    VALUES ('Cancha de Fútbol 5', 10), ('Cancha de Básquet', 10), ('Cancha de Tenis', 4)
     ON CONFLICT DO NOTHING;
   `);
+
+  const adminEmail = process.env.SEED_ADMIN_EMAIL ?? 'admin@demo.com';
+  const adminPassword = process.env.SEED_ADMIN_PASSWORD ?? 'admin123';
+  const passwordHash = await bcrypt.hash(adminPassword, 12);
+  await pool.query(
+    `INSERT INTO users (name, email, password_hash, role)
+     VALUES ('Administrador', $1, $2, 'ADMIN')
+     ON CONFLICT (email) DO NOTHING`,
+    [adminEmail, passwordHash]
+  );
 }
