@@ -24,8 +24,13 @@ export async function migrate() {
       name text NOT NULL UNIQUE,
       capacity integer NOT NULL CHECK (capacity > 0),
       active boolean NOT NULL DEFAULT true,
+      open_hour smallint NOT NULL DEFAULT 6,
+      close_hour smallint NOT NULL DEFAULT 18,
       created_at timestamptz NOT NULL DEFAULT now()
     );
+
+    ALTER TABLE resources ADD COLUMN IF NOT EXISTS open_hour smallint NOT NULL DEFAULT 6;
+    ALTER TABLE resources ADD COLUMN IF NOT EXISTS close_hour smallint NOT NULL DEFAULT 18;
 
     CREATE TABLE IF NOT EXISTS reservations (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

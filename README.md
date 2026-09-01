@@ -54,19 +54,29 @@ Al iniciar, la API crea automáticamente un usuario `ADMIN` si no existe:
 - Email: `admin@demo.com`
 - Password: `admin123`
 
-Se puede sobrescribir con las variables de entorno `SEED_ADMIN_EMAIL` y `SEED_ADMIN_PASSWORD`. Inicia sesión con esta cuenta para ver el botón **Panel Admin**, que lista todas las reservas (de cualquier usuario) y permite cancelarlas.
+Se puede sobrescribir con las variables de entorno `SEED_ADMIN_EMAIL` y `SEED_ADMIN_PASSWORD`. Inicia sesión con esta cuenta para ver el **Panel Admin**: el administrador solo puede visualizar/cancelar reservas y gestionar las canchas (no puede reservar).
+
+## Reglas de negocio
+
+- **Usuario (`USER`):** crea y cancela sus propias reservas.
+- **Administrador (`ADMIN`):** ve y cancela todas las reservas, y gestiona las canchas (crear, activar/desactivar, definir cupo y horario). No puede crear reservas (bloqueado también en el backend con `403`).
+- **Horario por cancha:** cada cancha tiene `open_hour`/`close_hour` (por defecto 06:00–18:00). El backend rechaza reservas fuera de ese rango.
+- **Reserva sin sesión:** cualquiera puede elegir cancha, día y hora; al confirmar sin sesión se pide iniciar sesión/registrarse y, apenas se autentica, la reserva se crea automáticamente con los datos ya seleccionados.
 
 ## Interfaz
 
-- **Disponibilidad del día:** grilla de bloques horarios (08:00–20:00) por recurso y fecha, en verde (libre) o rojo (ocupado). Al hacer clic en un bloque libre se prellena el formulario de reserva.
-- **Mis reservas:** listado personal con opción de cancelar.
-- **Panel Admin:** solo visible para el rol `ADMIN`, muestra todas las reservas del sistema con usuario, recurso, estado y cancelación.
+- **Asistente por pasos:** elegir cancha → elegir día → elegir hora disponible → confirmar. La columna izquierda muestra el historial de reservas del usuario.
+- **Panel Admin → Reservas:** todas las reservas del sistema con cancelación.
+- **Panel Admin → Espacios:** alta de canchas y edición en línea de cupo, horario de apertura/cierre y estado activo/inactivo.
 
 ## Endpoints iniciales
 
 - `POST /api/auth/register`
 - `POST /api/auth/login`
 - `GET /api/resources`
+- `GET /api/admin/resources` (ADMIN)
+- `POST /api/admin/resources` (ADMIN)
+- `PATCH /api/admin/resources/:id` (ADMIN)
 - `GET /api/reservations/availability?resourceId=&date=`
 - `POST /api/reservations`
 - `GET /api/reservations/me`

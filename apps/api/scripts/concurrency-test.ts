@@ -30,7 +30,7 @@ if (!resource) {
 }
 
 const start = new Date(Date.now() + 48 * 60 * 60 * 1000);
-start.setUTCMinutes(0, 0, 0);
+start.setUTCHours(10, 0, 0, 0);
 const end = new Date(start.getTime() + 60 * 60 * 1000);
 
 const attempts = await Promise.all(
