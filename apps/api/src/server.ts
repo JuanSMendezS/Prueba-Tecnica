@@ -7,7 +7,27 @@ import { migrate, pool } from './db.js';
 
 const app = Fastify({ logger: true });
 
-await app.register(cors, { origin: true });
+const CANCELLATION_WINDOW_HOURS = 2;
+const RESERVATION_SLOT_MINUTES = 60;
+
+await app.register(cors, {
+  origin: true,
+  methods: ['GET', 'HEAD', 'POST', 'PATCH', 'PUT', 'DELETE'],
+  allowedHeaders: ['content-type', 'authorization']
+});
+
+// Tolera content-type: application/json en requests sin body (ej. DELETE desde fetch del navegador).
+app.addContentTypeParser('application/json', { parseAs: 'string' }, (_request, body, done) => {
+  if (!body) {
+    done(null, undefined);
+    return;
+  }
+  try {
+    done(null, JSON.parse(body as string));
+  } catch (error) {
+    done(error as Error, undefined);
+  }
+});
 
 const credentialsSchema = z.object({
   email: z.string().email(),
@@ -160,6 +180,16 @@ app.post('/api/reservations', { preHandler: requireAuth }, async (request, reply
     return reply.code(400).send({ message: 'Rango horario inválido' });
   }
 
+  const durationMinutes = (end.getTime() - start.getTime()) / 60000;
+  if (durationMinutes !== RESERVATION_SLOT_MINUTES) {
+    return reply.code(400).send({
+      message: `Cada reserva debe durar exactamente ${RESERVATION_SLOT_MINUTES} minutos`
+    });
+  }
+  if (start.getUTCMinutes() !== 0 || start.getUTCSeconds() !== 0) {
+    return reply.code(400).send({ message: 'La reserva debe iniciar en punto (ej. 10:00, 11:00)' });
+  }
+
   const resourceResult = await pool.query(
     'SELECT open_hour, close_hour FROM resources WHERE id = $1 AND active = true',
     [body.resourceId]
@@ -212,10 +242,30 @@ app.get('/api/reservations/me', { preHandler: requireAuth }, async (request) => 
 });
 
 app.delete('/api/reservations/:id', { preHandler: requireAuth }, async (request, reply) => {
-  if (request.user?.role !== 'ADMIN') {
-    return reply.code(403).send({ message: 'Solo un administrador puede cancelar reservas' });
-  }
   const params = z.object({ id: z.string().uuid() }).parse(request.params);
+  const isAdmin = request.user?.role === 'ADMIN';
+
+  const existing = await pool.query(
+    'SELECT id, user_id, start_time, status FROM reservations WHERE id = $1',
+    [params.id]
+  );
+  const reservation = existing.rows[0];
+  if (!reservation) {
+    return reply.code(404).send({ message: 'Reserva no encontrada' });
+  }
+
+  if (!isAdmin) {
+    if (reservation.user_id !== request.user?.id) {
+      return reply.code(403).send({ message: 'No puedes cancelar reservas de otro usuario' });
+    }
+    const hoursUntilStart = (new Date(reservation.start_time).getTime() - Date.now()) / (60 * 60 * 1000);
+    if (hoursUntilStart < CANCELLATION_WINDOW_HOURS) {
+      return reply.code(400).send({
+        message: `Solo puedes cancelar con al menos ${CANCELLATION_WINDOW_HOURS} horas de anticipación`
+      });
+    }
+  }
+
   const result = await pool.query(
     `UPDATE reservations
      SET status = 'CANCELLED'
@@ -223,10 +273,6 @@ app.delete('/api/reservations/:id', { preHandler: requireAuth }, async (request,
      RETURNING id, status`,
     [params.id]
   );
-
-  if (result.rowCount === 0) {
-    return reply.code(404).send({ message: 'Reserva no encontrada' });
-  }
   return result.rows[0];
 });
 

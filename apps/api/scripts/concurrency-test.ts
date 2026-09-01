@@ -4,7 +4,7 @@ const totalRequests = Number(process.env.CONCURRENCY_REQUESTS ?? 25);
 async function request(path: string, init?: RequestInit) {
   const response = await fetch(`${apiUrl}${path}`, {
     ...init,
-    headers: { 'content-type': 'application/json', ...init?.headers }
+    headers: { ...(init?.body ? { 'content-type': 'application/json' } : {}), ...init?.headers }
   });
   const body = await response.json().catch(() => null);
   return { response, body };
@@ -45,8 +45,17 @@ const attempts = await Promise.all(
 
 const created = attempts.filter(({ response }) => response.status === 201).length;
 const conflicts = attempts.filter(({ response }) => response.status === 409).length;
+const winner = attempts.find(({ response }) => response.status === 201)?.body;
 
 console.log({ totalRequests, created, conflicts, resource: resource.name, start: start.toISOString(), end: end.toISOString() });
+
+// Libera el slot para que el script se pueda volver a ejecutar sin colisionar con la reserva ganadora.
+if (winner) {
+  await request(`/api/reservations/${winner.id}`, {
+    method: 'DELETE',
+    headers: { authorization: `Bearer ${registered.body.token}` }
+  });
+}
 
 if (created !== 1 || conflicts !== totalRequests - 1) {
   throw new Error(`Concurrencia inválida: se esperaban 1 creado y ${totalRequests - 1} conflictos`);

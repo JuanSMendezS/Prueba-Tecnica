@@ -1,6 +1,6 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import { CalendarDays, Clock, Lock, LogOut, Plus, RefreshCw, ShieldAlert } from 'lucide-react';
+import { CalendarDays, Clock, Loader2, Lock, LogOut, Plus, RefreshCw, ShieldAlert } from 'lucide-react';
 import './styles.css';
 
 type Role = 'USER' | 'ADMIN';
@@ -11,6 +11,7 @@ type PendingReservation = { resourceId: string; date: string; hour: number };
 
 const apiUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
 const MESSAGE_TIMEOUT_MS = 10000;
+const CANCELLATION_WINDOW_HOURS = 2;
 
 function todayIsoDate() {
   const offset = new Date().getTimezoneOffset() * 60000;
@@ -42,12 +43,18 @@ function App() {
   const [showAuthModal, setShowAuthModal] = React.useState(false);
   const [message, setMessage] = React.useState('');
   const [authMode, setAuthMode] = React.useState<'login' | 'register'>('register');
+  const [loadingResources, setLoadingResources] = React.useState(true);
+  const [loadingAvailability, setLoadingAvailability] = React.useState(false);
+  const [reserving, setReserving] = React.useState(false);
+  const [cancellingId, setCancellingId] = React.useState<string | null>(null);
+  const [savingCourt, setSavingCourt] = React.useState(false);
+  const [savingResourceId, setSavingResourceId] = React.useState<string | null>(null);
 
   async function api<T>(path: string, init?: RequestInit): Promise<T> {
     const response = await fetch(`${apiUrl}${path}`, {
       ...init,
       headers: {
-        'content-type': 'application/json',
+        ...(init?.body ? { 'content-type': 'application/json' } : {}),
         ...(token ? { authorization: `Bearer ${token}` } : {}),
         ...init?.headers
       }
@@ -60,9 +67,14 @@ function App() {
   }
 
   async function loadResources() {
-    const data = await api<Resource[]>('/api/resources');
-    setResources(data);
-    setResourceId((current) => current || data[0]?.id || '');
+    setLoadingResources(true);
+    try {
+      const data = await api<Resource[]>('/api/resources');
+      setResources(data);
+      setResourceId((current) => current || data[0]?.id || '');
+    } finally {
+      setLoadingResources(false);
+    }
   }
 
   async function loadAdminResources() {
@@ -75,9 +87,14 @@ function App() {
     setReservations(await api<Reservation[]>('/api/reservations/me'));
   }
 
-  async function loadAvailability() {
+  async function loadAvailability(showLoading = true) {
     if (!resourceId) return;
-    setAvailability(await api<Reservation[]>(`/api/reservations/availability?resourceId=${resourceId}&date=${date}`));
+    if (showLoading) setLoadingAvailability(true);
+    try {
+      setAvailability(await api<Reservation[]>(`/api/reservations/availability?resourceId=${resourceId}&date=${date}`));
+    } finally {
+      if (showLoading) setLoadingAvailability(false);
+    }
   }
 
   async function loadAdminReservations() {
@@ -101,7 +118,7 @@ function App() {
   React.useEffect(() => {
     if (!resourceId) return;
     const interval = setInterval(() => {
-      loadAvailability().catch(() => undefined);
+      loadAvailability(false).catch(() => undefined);
     }, 8000);
     return () => clearInterval(interval);
   }, [resourceId, date]);
@@ -130,6 +147,7 @@ function App() {
   }, [message]);
 
   async function performReservation(target: PendingReservation) {
+    setReserving(true);
     try {
       const { start, end } = buildSlot(target.date, target.hour);
       await api('/api/reservations', {
@@ -138,10 +156,12 @@ function App() {
       });
       setMessage('Reserva confirmada');
       setSelectedHour(null);
-      await Promise.all([loadReservations(), loadAvailability()]);
+      await Promise.all([loadReservations(), loadAvailability(false)]);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'No se pudo reservar');
-      await loadAvailability();
+      await loadAvailability(false);
+    } finally {
+      setReserving(false);
     }
   }
 
@@ -195,12 +215,15 @@ function App() {
   }
 
   async function cancelReservation(id: string) {
+    setCancellingId(id);
     try {
       await api(`/api/reservations/${id}`, { method: 'DELETE' });
       setMessage('Reserva cancelada');
-      await Promise.all([loadReservations(), loadAvailability(), loadAdminReservations()]);
+      await Promise.all([loadReservations(), loadAvailability(false), loadAdminReservations()]);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'No se pudo cancelar la reserva');
+    } finally {
+      setCancellingId(null);
     }
   }
 
@@ -208,6 +231,7 @@ function App() {
     event.preventDefault();
     const form = event.currentTarget;
     const formData = new FormData(form);
+    setSavingCourt(true);
     try {
       await api('/api/admin/resources', {
         method: 'POST',
@@ -223,15 +247,20 @@ function App() {
       await Promise.all([loadAdminResources(), loadResources()]);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'No se pudo crear la cancha');
+    } finally {
+      setSavingCourt(false);
     }
   }
 
   async function updateResource(id: string, patch: Partial<{ name: string; capacity: number; active: boolean; openHour: number; closeHour: number }>) {
+    setSavingResourceId(id);
     try {
       await api(`/api/admin/resources/${id}`, { method: 'PATCH', body: JSON.stringify(patch) });
       await Promise.all([loadAdminResources(), loadResources()]);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'No se pudo actualizar la cancha');
+    } finally {
+      setSavingResourceId(null);
     }
   }
 
@@ -286,7 +315,9 @@ function App() {
                       <td><span className={`status status-${reservation.status.toLowerCase()}`}>{reservation.status}</span></td>
                       <td>
                         {reservation.status === 'CONFIRMED' && (
-                          <button onClick={() => cancelReservation(reservation.id)}>Cancelar</button>
+                          <button onClick={() => cancelReservation(reservation.id)} disabled={cancellingId === reservation.id}>
+                            {cancellingId === reservation.id ? <Loader2 size={14} className="spin" /> : 'Cancelar'}
+                          </button>
                         )}
                       </td>
                     </tr>
@@ -307,24 +338,24 @@ function App() {
               </thead>
               <tbody>
                 {adminResources.map((resource) => (
-                  <tr key={resource.id}>
+                  <tr key={resource.id} className={savingResourceId === resource.id ? 'row-saving' : ''}>
                     <td>{resource.name}</td>
                     <td>
-                      <input type="number" min={1} defaultValue={resource.capacity} className="table-input"
+                      <input type="number" min={1} defaultValue={resource.capacity} className="table-input" disabled={savingResourceId === resource.id}
                         onBlur={(event) => updateResource(resource.id, { capacity: Number(event.target.value) })} />
                     </td>
                     <td>
-                      <input type="number" min={0} max={23} defaultValue={resource.open_hour} className="table-input"
+                      <input type="number" min={0} max={23} defaultValue={resource.open_hour} className="table-input" disabled={savingResourceId === resource.id}
                         onBlur={(event) => updateResource(resource.id, { openHour: Number(event.target.value) })} />
                     </td>
                     <td>
-                      <input type="number" min={1} max={24} defaultValue={resource.close_hour} className="table-input"
+                      <input type="number" min={1} max={24} defaultValue={resource.close_hour} className="table-input" disabled={savingResourceId === resource.id}
                         onBlur={(event) => updateResource(resource.id, { closeHour: Number(event.target.value) })} />
                     </td>
                     <td><span className={`status ${resource.active ? 'status-confirmed' : 'status-cancelled'}`}>{resource.active ? 'Activa' : 'Inactiva'}</span></td>
                     <td>
-                      <button onClick={() => updateResource(resource.id, { active: !resource.active })}>
-                        {resource.active ? 'Desactivar' : 'Activar'}
+                      <button onClick={() => updateResource(resource.id, { active: !resource.active })} disabled={savingResourceId === resource.id}>
+                        {savingResourceId === resource.id ? <Loader2 size={14} className="spin" /> : resource.active ? 'Desactivar' : 'Activar'}
                       </button>
                     </td>
                   </tr>
@@ -337,7 +368,9 @@ function App() {
               <input name="capacity" type="number" min={1} placeholder="Cupo" required />
               <input name="openHour" type="number" min={0} max={23} defaultValue={6} title="Hora de apertura" />
               <input name="closeHour" type="number" min={1} max={24} defaultValue={18} title="Hora de cierre" />
-              <button type="submit" className="primary"><Plus size={18} /> Agregar cancha</button>
+              <button type="submit" className="primary" disabled={savingCourt}>
+                {savingCourt ? <Loader2 size={18} className="spin" /> : <Plus size={18} />} Agregar cancha
+              </button>
             </form>
           </section>
         )
@@ -350,33 +383,53 @@ function App() {
             </div>
             {!token && <p className="hint">Inicia sesión para ver tu historial de reservas.</p>}
             {token && reservations.length === 0 && <p className="empty">Aún no hay reservas activas.</p>}
-            {token && reservations.map((reservation) => (
-              <article className="reservation-item" key={reservation.id}>
-                <strong>{reservation.resource_name}</strong>
-                <span className="reservation-time">{new Date(reservation.start_time).toLocaleString()} - {new Date(reservation.end_time).toLocaleTimeString()}</span>
-                <span className={`status ${reservation.status === 'CONFIRMED' ? 'status-confirmed' : 'status-cancelled'}`}>
-                  {reservation.status === 'CONFIRMED' ? 'Confirmada' : 'Cancelada'}
-                </span>
-              </article>
-            ))}
+            {token && reservations.map((reservation) => {
+              const hoursUntilStart = (new Date(reservation.start_time).getTime() - Date.now()) / (60 * 60 * 1000);
+              const cancellable = reservation.status === 'CONFIRMED' && hoursUntilStart >= CANCELLATION_WINDOW_HOURS;
+              return (
+                <article className="reservation-item" key={reservation.id}>
+                  <strong>{reservation.resource_name}</strong>
+                  <span className="reservation-time">{new Date(reservation.start_time).toLocaleString()} - {new Date(reservation.end_time).toLocaleTimeString()}</span>
+                  {cancellable ? (
+                    <button onClick={() => cancelReservation(reservation.id)} disabled={cancellingId === reservation.id}>
+                      {cancellingId === reservation.id ? <Loader2 size={14} className="spin" /> : 'Cancelar'}
+                    </button>
+                  ) : (
+                    <span
+                      className={`status ${reservation.status === 'CONFIRMED' ? 'status-confirmed' : 'status-cancelled'}`}
+                      title={reservation.status === 'CONFIRMED' ? `Ya no se puede cancelar (menos de ${CANCELLATION_WINDOW_HOURS}h de anticipación)` : undefined}
+                    >
+                      {reservation.status === 'CONFIRMED' ? 'Confirmada' : 'Cancelada'}
+                    </span>
+                  )}
+                </article>
+              );
+            })}
+            {token && reservations.length > 0 && (
+              <p className="hint">Puedes cancelar tus reservas hasta {CANCELLATION_WINDOW_HOURS} horas antes del horario reservado.</p>
+            )}
           </section>
 
           <section className="panel wizard-panel">
             <h2><CalendarDays size={20} /> Nueva reserva de cancha</h2>
 
             <label>1. Elige una cancha</label>
-            <div className="court-tabs">
-              {resources.map((resource) => (
-                <button
-                  type="button"
-                  key={resource.id}
-                  className={resourceId === resource.id ? 'active' : ''}
-                  onClick={() => setResourceId(resource.id)}
-                >
-                  {resource.name}
-                </button>
-              ))}
-            </div>
+            {loadingResources && resources.length === 0 ? (
+              <p className="hint"><Loader2 size={14} className="spin" /> Cargando canchas...</p>
+            ) : (
+              <div className="court-tabs">
+                {resources.map((resource) => (
+                  <button
+                    type="button"
+                    key={resource.id}
+                    className={resourceId === resource.id ? 'active' : ''}
+                    onClick={() => setResourceId(resource.id)}
+                  >
+                    {resource.name}
+                  </button>
+                ))}
+              </div>
+            )}
 
             <label>2. Elige un día</label>
             <input type="date" value={date} min={todayIsoDate()} onChange={(event) => setDate(event.target.value)} />
@@ -389,27 +442,34 @@ function App() {
                   <span className="legend-item"><i className="legend-swatch legend-free" /> Disponible</span>
                   <span className="legend-item"><i className="legend-swatch legend-occupied" /> Ocupada</span>
                   <span className="legend-item"><i className="legend-swatch legend-selected" /> Seleccionada</span>
+                  <span className="legend-item"><i className="legend-swatch legend-past" /> Ya pasó</span>
                 </div>
-                <div className="slot-grid">
-                  {slotHours.map((hour) => {
-                    const { start, end } = buildSlot(date, hour);
-                    const occupied = availability.some((entry) => new Date(entry.start_time) < end && new Date(entry.end_time) > start);
-                    const selected = selectedHour === hour;
-                    return (
-                      <button
-                        type="button"
-                        key={hour}
-                        className={`slot ${selected ? 'slot-selected' : occupied ? 'slot-occupied' : 'slot-free'}`}
-                        onClick={() => !occupied && setSelectedHour(hour)}
-                        disabled={occupied}
-                        title={occupied ? 'Horario ocupado' : 'Horario disponible'}
-                      >
-                        {occupied && <Lock size={13} />}
-                        {String(hour).padStart(2, '0')}:00
-                      </button>
-                    );
-                  })}
-                </div>
+                {loadingAvailability ? (
+                  <p className="hint"><Loader2 size={14} className="spin" /> Cargando disponibilidad...</p>
+                ) : (
+                  <div className="slot-grid">
+                    {slotHours.map((hour) => {
+                      const { start, end } = buildSlot(date, hour);
+                      const occupied = availability.some((entry) => new Date(entry.start_time) < end && new Date(entry.end_time) > start);
+                      const isPast = start <= new Date();
+                      const selected = selectedHour === hour;
+                      const disabled = occupied || isPast;
+                      return (
+                        <button
+                          type="button"
+                          key={hour}
+                          className={`slot ${selected ? 'slot-selected' : isPast ? 'slot-past' : occupied ? 'slot-occupied' : 'slot-free'}`}
+                          onClick={() => !disabled && setSelectedHour(hour)}
+                          disabled={disabled}
+                          title={isPast ? 'Horario ya pasado' : occupied ? 'Horario ocupado' : 'Horario disponible'}
+                        >
+                          {occupied && !isPast && <Lock size={13} />}
+                          {String(hour).padStart(2, '0')}:00
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
                 <p className="hint">Selecciona un bloque libre para continuar. La disponibilidad se actualiza automáticamente.</p>
               </>
             )}
@@ -417,7 +477,9 @@ function App() {
             {selectedHour !== null && selectedResource && (
               <div className="confirm-box">
                 <p><strong>{selectedResource.name}</strong> · {date} · {String(selectedHour).padStart(2, '0')}:00 - {String(selectedHour + 1).padStart(2, '0')}:00</p>
-                <button className="primary" onClick={requestReservation}><Clock size={18} /> Confirmar reserva</button>
+                <button className="primary" onClick={requestReservation} disabled={reserving}>
+                  {reserving ? <Loader2 size={18} className="spin" /> : <Clock size={18} />} Confirmar reserva
+                </button>
               </div>
             )}
           </section>
