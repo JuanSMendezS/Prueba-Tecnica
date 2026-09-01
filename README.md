@@ -58,7 +58,7 @@ Se puede sobrescribir con las variables de entorno `SEED_ADMIN_EMAIL` y `SEED_AD
 
 ## Reglas de negocio
 
-- **Usuario (`USER`):** solo puede crear sus propias reservas; no puede cancelarlas (bloqueado también en el backend con `403`).
+- **Usuario (`USER`):** crea sus propias reservas y puede cancelarlas hasta con 2 horas de anticipación al inicio (validado también en el backend con `400`/`403`).
 - **Administrador (`ADMIN`):** ve y cancela todas las reservas, y gestiona las canchas (crear, activar/desactivar, definir cupo y horario). No puede crear reservas (bloqueado también en el backend con `403`).
 - **Horario por cancha:** cada cancha tiene `open_hour`/`close_hour` (por defecto 06:00–18:00). El backend rechaza reservas fuera de ese rango.
 - **Reserva sin sesión:** cualquiera puede elegir cancha, día y hora; al confirmar sin sesión se pide iniciar sesión/registrarse y, apenas se autentica, la reserva se crea automáticamente con los datos ya seleccionados.
