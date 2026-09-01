@@ -2,7 +2,7 @@
 
 ## Objetivo usado para construir la base
 
-Crear una aplicación de reservas donde el criterio principal sea demostrar cero doble reserva ante condiciones de carrera.
+Crear una aplicación de reservas de canchas deportivas donde el criterio principal sea demostrar cero doble reserva ante condiciones de carrera.
 
 ## Prompts y criterios guía
 

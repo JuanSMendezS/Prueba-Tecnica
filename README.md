@@ -1,6 +1,6 @@
-# Sistema de Reservas
+# Reservas de Canchas Deportivas
 
-Base full-stack para una prueba técnica centrada en evitar sobreventa y solapamiento de reservas bajo concurrencia.
+Sistema full-stack para reservar canchas deportivas (fútbol, básquet, tenis) centrado en evitar sobreventa y solapamiento de turnos bajo concurrencia.
 
 ## Stack
 
@@ -22,7 +22,11 @@ npm run dev
 npm run up
 ```
 
-`npm run up` construye y deja corriendo PostgreSQL, API y frontend con Docker Compose.
+`npm run up` verifica si las imágenes de Docker ya existen: la primera vez las construye (`docker compose build`) y luego levanta PostgreSQL, API y frontend; en ejecuciones posteriores omite el build y va directo a `docker compose up`. Si necesitas forzar una reconstrucción completa (por ejemplo tras cambiar dependencias), usa:
+
+```bash
+npm run up:build
+```
 
 - Frontend: http://localhost:5173
 - API: http://localhost:3000
@@ -42,6 +46,21 @@ npm run test:concurrency
 ```
 
 El script dispara 25 solicitudes simultáneas contra el mismo recurso y el mismo horario. El resultado esperado es exactamente 1 respuesta `201 Created` y 24 respuestas `409 Conflict`.
+
+## Cuenta administrador (seed)
+
+Al iniciar, la API crea automáticamente un usuario `ADMIN` si no existe:
+
+- Email: `admin@demo.com`
+- Password: `admin123`
+
+Se puede sobrescribir con las variables de entorno `SEED_ADMIN_EMAIL` y `SEED_ADMIN_PASSWORD`. Inicia sesión con esta cuenta para ver el botón **Panel Admin**, que lista todas las reservas (de cualquier usuario) y permite cancelarlas.
+
+## Interfaz
+
+- **Disponibilidad del día:** grilla de bloques horarios (08:00–20:00) por recurso y fecha, en verde (libre) o rojo (ocupado). Al hacer clic en un bloque libre se prellena el formulario de reserva.
+- **Mis reservas:** listado personal con opción de cancelar.
+- **Panel Admin:** solo visible para el rol `ADMIN`, muestra todas las reservas del sistema con usuario, recurso, estado y cancelación.
 
 ## Endpoints iniciales
 
