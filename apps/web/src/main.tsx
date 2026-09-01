@@ -194,10 +194,14 @@ function App() {
     performReservation(target);
   }
 
-  async function cancelReservation(id: string, fromAdmin = false) {
-    await api(`/api/reservations/${id}`, { method: 'DELETE' });
-    setMessage('Reserva cancelada');
-    await Promise.all([loadReservations(), loadAvailability(), fromAdmin ? loadAdminReservations() : Promise.resolve()]);
+  async function cancelReservation(id: string) {
+    try {
+      await api(`/api/reservations/${id}`, { method: 'DELETE' });
+      setMessage('Reserva cancelada');
+      await Promise.all([loadReservations(), loadAvailability(), loadAdminReservations()]);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'No se pudo cancelar la reserva');
+    }
   }
 
   async function createResource(event: React.FormEvent<HTMLFormElement>) {
@@ -282,7 +286,7 @@ function App() {
                       <td><span className={`status status-${reservation.status.toLowerCase()}`}>{reservation.status}</span></td>
                       <td>
                         {reservation.status === 'CONFIRMED' && (
-                          <button onClick={() => cancelReservation(reservation.id, true)}>Cancelar</button>
+                          <button onClick={() => cancelReservation(reservation.id)}>Cancelar</button>
                         )}
                       </td>
                     </tr>
@@ -349,8 +353,10 @@ function App() {
             {token && reservations.map((reservation) => (
               <article className="reservation-item" key={reservation.id}>
                 <strong>{reservation.resource_name}</strong>
-                <span>{new Date(reservation.start_time).toLocaleString()} - {new Date(reservation.end_time).toLocaleTimeString()}</span>
-                <button onClick={() => cancelReservation(reservation.id)}>Cancelar</button>
+                <span className="reservation-time">{new Date(reservation.start_time).toLocaleString()} - {new Date(reservation.end_time).toLocaleTimeString()}</span>
+                <span className={`status ${reservation.status === 'CONFIRMED' ? 'status-confirmed' : 'status-cancelled'}`}>
+                  {reservation.status === 'CONFIRMED' ? 'Confirmada' : 'Cancelada'}
+                </span>
               </article>
             ))}
           </section>
@@ -374,6 +380,7 @@ function App() {
 
             <label>2. Elige un día</label>
             <input type="date" value={date} min={todayIsoDate()} onChange={(event) => setDate(event.target.value)} />
+            <p className="hint">Solo se pueden reservar canchas a partir de hoy; no se permiten fechas pasadas.</p>
 
             {resourceId && (
               <>

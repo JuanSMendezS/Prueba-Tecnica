@@ -137,8 +137,9 @@ button { border-radius: 8px; border: 1px solid var(--line); cursor: pointer; }
   padding: 14px 0;
   border-top: 1px solid var(--line);
 }
-.reservation-item span { color: var(--muted); font-size: 0.92rem; }
+.reservation-item .reservation-time { color: var(--muted); font-size: 0.92rem; }
 .reservation-item button { grid-row: span 2; padding: 9px 12px; background: var(--panel); color: var(--ink); border-color: var(--line); }
+.reservation-item .status { grid-row: span 2; justify-self: end; }
 .empty, .hint { color: var(--muted); margin: 0; }
 
 .toast {

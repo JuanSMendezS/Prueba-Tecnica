@@ -212,14 +212,16 @@ app.get('/api/reservations/me', { preHandler: requireAuth }, async (request) => 
 });
 
 app.delete('/api/reservations/:id', { preHandler: requireAuth }, async (request, reply) => {
+  if (request.user?.role !== 'ADMIN') {
+    return reply.code(403).send({ message: 'Solo un administrador puede cancelar reservas' });
+  }
   const params = z.object({ id: z.string().uuid() }).parse(request.params);
-  const isAdmin = request.user?.role === 'ADMIN';
   const result = await pool.query(
     `UPDATE reservations
      SET status = 'CANCELLED'
-     WHERE id = $1 AND ($2::boolean OR user_id = $3)
+     WHERE id = $1
      RETURNING id, status`,
-    [params.id, isAdmin, request.user?.id]
+    [params.id]
   );
 
   if (result.rowCount === 0) {
