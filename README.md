@@ -86,3 +86,8 @@ Se puede sobrescribir con las variables de entorno `SEED_ADMIN_EMAIL` y `SEED_AD
 ## Decisión clave
 
 La garantía fuerte vive en la base de datos, no solo en la aplicación. Aunque dos requests pasen una validación al mismo tiempo, PostgreSQL rechaza el segundo insert que solape un rango confirmado para el mismo recurso, y la API transforma ese error en `409 Conflict`.
+
+## Contexto de IA
+
+Este proyecto se desarrolló guiando a GitHub Copilot. El detalle de los prompts principales y las decisiones tomadas está en [AI_CONTEXT.md](AI_CONTEXT.md); las reglas de contexto que Copilot respeta en este repo (equivalente a `.cursorrules`) están en [.github/copilot-instructions.md](.github/copilot-instructions.md).
+
