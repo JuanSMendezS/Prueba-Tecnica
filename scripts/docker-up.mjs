@@ -1,6 +1,18 @@
 #!/usr/bin/env node
 // Construye las imágenes solo si faltan (primera vez) y luego levanta el stack.
 import { execSync } from 'node:child_process';
+import { copyFileSync, existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+
+const rootDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+const envPath = path.join(rootDir, '.env');
+const envExamplePath = path.join(rootDir, '.env.example');
+
+if (!existsSync(envPath) && existsSync(envExamplePath)) {
+  copyFileSync(envExamplePath, envPath);
+  console.log('.env no existía, se creó a partir de .env.example.');
+}
 
 function run(command) {
   execSync(command, { stdio: 'inherit' });

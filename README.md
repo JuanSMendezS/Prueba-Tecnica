@@ -31,6 +31,8 @@ npm run up:build
 - Frontend: http://localhost:5173
 - API: http://localhost:3000
 
+`docker-compose.yml` toma usuario/clave de Postgres, `JWT_SECRET` y credenciales del admin seed desde variables de entorno (con valores de desarrollo por defecto si no defines nada). Para personalizarlos, copia `.env.example` a `.env` y ajusta los valores; Docker Compose lo carga automáticamente.
+
 Para detener el entorno:
 
 ```bash
